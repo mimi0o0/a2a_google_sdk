@@ -19,7 +19,8 @@ from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.event import EvenetQueue
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import new_agent_text_message
-from llm.gemini_client import call_gemin
+from llm.gemini_client import call_gemini
+import asyncio
 
 PORT=8001
 
@@ -100,4 +101,31 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
  
 Only output the outline. No preamble or commentary. """
         
-        outline_text=await 
+        outline_text=await asyncio.to_thread(call_gemini,prompt)
+        event_queue.enqueue_event(new_agent_text_message(outline_text))
+
+    
+    async def cancel(self,
+                     context:RequestContext,
+                     event_queue:EvenetQueue,)->None:
+        raise NotImplementedError("Outline agent does not support cancellation")
+    
+
+def build_app():
+    task_store=InMemoryTaskStore()
+    executor=OutlineAgentExecutor()
+    handler=DefaultRequestHandler(
+        agent_executor=executor,
+        task_store=task_store,
+    )    
+    return A2AStarletteApplication(
+        agent_card=outline_agent_card,
+        http_handler=handler,
+
+    ).build()
+
+if __name__ =="__main__":
+    print(f"OutlineAgent starting on http://localhost:{PORT}")
+    print(f"[OutlineAgent] Agent Card: http://localhost:{PORT}/.well-known/agent.json")
+    uvicorn.run(build_app(), host="0.0.0.0", port=PORT)
+ 
