@@ -1,0 +1,169 @@
+"""Orchestrator main brain that dervies multi agent pipeline
+   what is does:
+   -accept a writing topic 
+   -discover each agent by fetching their agent card
+   -calls agent in sequence 
+   -pass output of each agent as the INPUT to the next
+   -saves the final article and seo data to disk
+       """
+import httpx
+import asyncio
+import sys
+from datetime import datetime
+import uuid
+from a2a.client import A2AClient,A2ACardResolver
+from a2a.types import (SendMessageRequest,MessageSendParams,Message,
+                       Part,TextPart,Role,TaskState)
+AGENT_URL={
+    "outline":"http://localhost:8001",
+    "writer":"http://localhost:8002",
+    "editor":"http://localhost:8003",
+    "seo":"http://localhost:8004"
+
+}
+
+async def send_to_agent(
+        agent_name:str,
+        agent_base_url:str,
+        user_message:str,
+        httpx_client:httpx.AsyncClient
+)->str:
+    """Discovers an A2A agent ,send it a message ,and return its text response"""
+
+
+    """1> Discover the agent capabilties via its agent card"""
+    resolver=A2ACardResolver(
+        httpx_client=httpx_client,
+        base_url=agent_base_url
+    )
+    agent_card = await resolver.get_agent_card()
+    print(f"Discovered :{agent_card.name}")
+    print(f"Skills:{[s.id for s in agent_card.skills]}")
+
+    """2> Create the A2A client for this agent"""
+    client =A2AClient(
+        httpx_client=httpx_client,
+        agent_card=agent_card
+    )
+
+    """3> Build the request payload"""
+    message=Message(messageId=str(uuid.uuid4()),
+                    role=Role.user,
+                    parts=[
+                        Part(root=TextPart(text=user_message))
+                    ],
+                    )
+    request = SendMessageRequest(
+        id=str(uuid.uuid4()),
+        params=MessageSendParams(message=message),
+
+    )
+    print(f"Sending message({len(user_message)}chars).....")
+    response=await client.send.message(request)
+
+    """Response is a sendmessageresponse"""
+    result = response.root
+    if hasattr(result,"error"):
+        raise RuntimeError(
+            f"A2A RPC error from {agent_name}: {result.error}"
+        )
+    
+    task = result.result
+    if task.status.state == TaskState.failed:
+        raise RuntimeError(
+            f"Agent[{agent_name}] returned failed status"
+            f"Message: {task.status.message}"        )
+
+    if task.status.state == TaskState.failed:
+        raise RuntimeError(
+            f"Agent[{agent_name}] returned failed status",
+            f"Message:{task.status.message}"   
+        )
+    
+    if task.status.state not in (TaskState.completed,TaskState.submitted):
+        print(f"Warning:unexpected state={task.status.state}")
+        text_parts=[
+            p.root.text
+            for p in task.status.message.parts
+            if hasattr(p.root,"text")
+        ]
+        agent_response="\n".join(text_parts)
+        print(f"Got response ({len(agent_response)}chars)")
+        return agent_response
+    
+async def run_writing_pipeline(topic:str)->None:
+    """Orchestrates the full writing pipeline:
+    topic->outline->article draft->edited article->SEO metadat
+    
+    We use one shared httpx.asyncCLient for all agent calls"""
+
+    print(f"Writing Pipeline")
+    print(f"Topic :{topic}")
+    print(f"Date:{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+    async with httpx.AsyncClient(timeout=60.0) as http:
+        print("Creating outline")
+        outline=await send_to_agent(agent_name="Outline Agent",
+                                    agent_base_url=AGENT_URL["outline"],
+                                    user_message=topic,
+                                    httpx_client=http,
+                                    
+                                    )
+        print(f"Outline preview {outline[:300]+"...."}")
+
+        print("Writing full article ....")
+        draft=await send_to_agent(
+            agent_name="Writer Agent",
+            agent_base_url=AGENT_URL["Write a full article based on this outline: {outline}"],
+            httpx_client=http,
+        )
+        print("Draft preview ")
+        print(draft[:300])
+
+        print("Editing and polishing")
+        polished = await send_to_agent(agent_name="Editor Agent",
+                                       agent_base_url=AGENT_URL["editor"],
+                                       user_message=f"Edit and polish this article draft :\n\n{draft}",
+                                       httpx_client=http,
+                                       )
+        
+        print("Generating SEO metadata......")
+        seo_data =await send_to_agent(agent_name="SEO Agent",
+                                      agent_base_url=AGENT_URL["seo"],
+                                      user_message=f"Generating SEO metadata for this article:\n\n{polished}",
+                                      httpx_client=http,
+                                      )
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        safe_topic = topic[:40].replace(" ","_").replace("/","_")
+        article_path=f"output_{safe_topic}_{timestamp}.md"
+        seo_path =f"output_seo_{safe_topic}_{timestamp}.txt"
+
+        with open(article_path ,"w",encoding="utf-8") as f:
+            f.write(f"{topic}")
+            f.write("pipeline stages:outline-> writer -> editor -> seo")
+            f.write(polished)
+        
+        with open(seo_path ,"W",encoding="utf-8")as f:
+            f.write(f"SEO metadata for :{topic}\n")
+            f.write(f"Generated:{datetime.now().isoformat}\n")
+            f.write(seo_data)
+
+
+            print(f"Article sabed to :{article_path}")
+            print(f"  SEO data saved to: {seo_path}")
+            print(f"\n  Article length   : {len(polished)} characters")
+            print(polished[:2000])
+            if len(polished)>2000:
+                print(f"\n[... {len(polished)-2000} more characters in file ...]")
+                print(f"\n--- SEO METADATA ---\n")
+                print(seo_data)
+
+        
+if __name__ =="__main__":
+    if len(sys.argv)<2:
+        print("Usage: python client/orchestrator.py \"Your writing topic here\"")
+        sys.exit(1)
+        topic = " ".join(sys.argv[1:])
+        asyncio.run(run_writing_pipeline(topic))
