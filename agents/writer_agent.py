@@ -4,22 +4,18 @@ WHAT IT DOES:
   Receives an outline (from the Outline Agent) and expands it into a full,
   well-written article with proper prose for each section.
   """
-import uvicorn 
-from a2a.types import (
-    AgentCard,
-    AgentSkill,
-    AgentCapabilities,
-    AgentAuthentication,
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-)
+import uvicorn
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handler import DefaultRequestHandler
+from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.event import EvenetQueue
+from a2a.server.events import EventQueue
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import new_agent_text_message
 from llm.gemini_client import call_gemini
-from a2a.server.events import EventQueue
 import asyncio
 
 port = 8002
@@ -45,7 +41,6 @@ writer_agent_card =AgentCard(
     defaultInputModes=["text/plain"],
     defaultOutputModes=["text/plain"],
     capabilities=AgentCapabilities(streaming=False),
-    authentication=AgentAuthentication(schemas=["public"]),
     skills=[writer_skill],
 )
 
@@ -56,7 +51,7 @@ class WriterAgentExecutor(AgentExecutor):
     async def execute(
             self,
             context:RequestContext,
-            event_queue:EvenetQueue,
+            event_queue:EventQueue,
     )->None:
         outline = context.get_user_input()
 

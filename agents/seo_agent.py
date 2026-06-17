@@ -9,26 +9,21 @@ WHAT IT DOES:
   - Suggested URL slug
   - Estimated reading time
   """
-import uvicorn 
-from a2a.types import (
-    AgentCard,
-    AgentSkill,
-    AgentCapabilities,
-    AgentAuthentication,
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-)
+import uvicorn
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handler import DefaultRequestHandler
+from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.event import EvenetQueue
+from a2a.server.events import EventQueue
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import new_agent_text_message
 from llm.gemini_client import call_gemini
-from a2a.server.events import EventQueue
 import asyncio
 
-port=8004
-
+port = 8004
 seo_metadata_skill=AgentSkill(
     id="generate_seo_metadata",
     name="Generate SEO Metadata",
@@ -51,7 +46,7 @@ keyword_research_skill =AgentSkill(
     description=("Given a topic or article suggest a hierarchy of target keywords"
                  "ranked by search intent and relevance"),
     tags=["seo","keywords","research"],
-    example=["What keywords should i target for an article about solar energy?"],
+    examples=["What keywords should i target for an article about solar energy?"],
     inputModes=["text/plain"],
     outputModes=["text/plain"]
     )
@@ -64,7 +59,6 @@ seo_agent_card=AgentCard(
     defaultInputModes=["text/plain"],
     defaultOutputModes=["text/plain"],
     capabilities=AgentCapabilities(streaming=False),
-    authentication=AgentAuthentication(schemes=["public"]),
     skills=[seo_metadata_skill,keyword_research_skill]
 )
 
@@ -74,7 +68,7 @@ class SEOAgentExecutor(AgentExecutor):
     async def execute(
             self,
             context:RequestContext,
-            event_queue:EvenetQueue,
+            event_queue:EventQueue,
     )->None:
         article = context.get_user_input()
         prompt=f"""You are an SEO expert. Analyse the following article and
@@ -118,7 +112,7 @@ def build_app():
         agent_card=seo_agent_card,
         http_handler=DefaultRequestHandler(
             agent_executor=SEOAgentExecutor(),
-            task_store=InMemoryTaskStore,
+            task_store=InMemoryTaskStore(),
         ),
     ).build()
 

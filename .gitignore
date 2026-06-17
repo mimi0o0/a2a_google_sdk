@@ -4,3 +4,23 @@ env/
 .env
 *.env
 .env.*
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.pyd
+
+
+output_*.md
+output_*.txt
+
+
+uv.lock
+
+.vscode/
+.idea/
+
+
+# Logs
+*.log

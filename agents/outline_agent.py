@@ -5,25 +5,21 @@ WHAT IT DOES:
   and returns a structured outline with 5 sections: Introduction, 3 body
   sections, and a Conclusion.
   """
-import uvicorn 
-from a2a.types import (
-    AgentCard,
-    AgentSkill,
-    AgentCapabilities,
-    AgentAuthentication,
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-)
+import uvicorn
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handler import DefaultRequestHandler
+from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.event import EvenetQueue
+from a2a.server.events import EventQueue
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import new_agent_text_message
 from llm.gemini_client import call_gemini
 import asyncio
 
-PORT=8001
-
+PORT = 8001
 outline_skill = AgentSkill(
     id= "create_outline",
     name="Create Writing Outline",
@@ -51,7 +47,6 @@ outline_agent_card = AgentCard(
     defaultInputModes=["text/plain"],
     defaultOutputModes=["text/plain"],
     capabilities=AgentCapabilities(streaming=False),
-    authentication=AgentAuthentication(schemes=["public"]),
     skills=[outline_skill],
 )
 
@@ -63,7 +58,7 @@ class OutlineAgentExecutor(AgentExecutor):
     async def execute(
             self,
             context:RequestContext,
-            event_queue:EvenetQueue,
+            event_queue:EventQueue,
     )->None:
         topic=context.get_user_input() #input of user
         prompt=f"""You are a professiona; content startegist.
@@ -107,7 +102,7 @@ Only output the outline. No preamble or commentary. """
     
     async def cancel(self,
                      context:RequestContext,
-                     event_queue:EvenetQueue,)->None:
+                     event_queue:EventQueue,)->None:
         raise NotImplementedError("Outline agent does not support cancellation")
     
 

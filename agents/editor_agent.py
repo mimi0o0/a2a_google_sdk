@@ -3,27 +3,21 @@ WHAT IT DOES:
   Receives the raw article draft (from the Writer Agent) and returns a polished
   version: fixing grammar, improving sentence flow, tightening prose, and
   ensuring consistent tone."""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import uvicorn 
-from a2a.types import (
-    AgentCard,
-    AgentSkill,
-    AgentCapabilities,
-    AgentAuthentication,
-
-)
+import uvicorn
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handler import DefaultRequestHandler
+from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.event import EvenetQueue
+from a2a.server.events import EventQueue
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.utils import new_agent_text_message
 from llm.gemini_client import call_gemini
-from a2a.server.events import EventQueue
 import asyncio
 
-port=8003
-
+port = 8003
 editor_skill = AgentSkill(
     id="edit_article",
     name="edit and polish article",
@@ -47,8 +41,7 @@ editor_agent_card=AgentCard(
     version="1.0.0",
     defaultInputModes=["text/plain"],
     defaultOutputModes=["text/plain"],
-    capabilitgies=AgentCapabilities(streaming=True),
-    authetication=AgentAuthentication(schemes=["public"]),
+    capabilities=AgentCapabilities(streaming=False),
     skills=[editor_skill],
 )
 
@@ -83,7 +76,7 @@ EDITING RULES:
         event_queue.enqueue_event(new_agent_text_message(edited_text))
     
 
-    async def cancel(self,context:RequestContext,event_queue:EvenetQueue)->None:
+    async def cancel(self,context:RequestContext,event_queue:EventQueue)->None:
         raise NotImplementedError("editor agent does not support cancellation")
     
 
